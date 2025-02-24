@@ -49,6 +49,7 @@ class DatasetRNN(Dataset):
         # xs = (xs - x_mean) / x_std
         # ys = (ys - x_mean) / x_std
         
+        sequence_length = None if sequence_length == -1 else sequence_length
         self.sequence_length = sequence_length if sequence_length is not None else xs.shape[1]
         self.stride = stride
         

@@ -28,7 +28,7 @@ def main(data, model_mcmc, model_rnn, session_id):
     n_parameters_rnn.append(sum(p.numel() for p in agent_rnn._model.parameters() if p.requires_grad))
 
     # setup sindy agent and get number of sindy coefficients which are not 0
-    agent_sindy = setup_agent_sindy(model_rnn, data, session_id=session_id)[0]
+    agent_sindy = setup_agent_sindy(model_rnn, data, participant_id=session_id)[0]
     n_parameters_sindy.append(agent_sindy._count_sindy_parameters(without_self=True))
     
     # setup mcmc agent

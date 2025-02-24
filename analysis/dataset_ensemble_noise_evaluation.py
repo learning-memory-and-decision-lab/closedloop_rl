@@ -36,14 +36,14 @@ if __name__=='__main__':
     }
     
     print('Creating the test dataset...', end='\r')
-    environment = bandits.EnvironmentBanditsDrift(sigma=0.1)
+    environment = bandits.BanditsDrift(sigma=0.1)
     agent_b5 = bandits.AgentQ(alpha_reward=0.25, beta_reward=5, forget_rate=0.2, beta_choice=0.25, alpha_penalty=True, confirmation_bias=True)
     agent_b3 = bandits.AgentQ(alpha_reward=0.25, beta_reward=3, forget_rate=0.2, beta_choice=0.25, alpha_penalty=True, confirmation_bias=True)
     agent_b1 = bandits.AgentQ(alpha_reward=0.25, beta_reward=1, forget_rate=0.2, beta_choice=0.25, alpha_penalty=True, confirmation_bias=True)
     datasets = {
-        5: bandits.create_dataset(agent=agent_b5, environment=environment, n_trials_per_session=200, n_sessions=1024),
-        3: bandits.create_dataset(agent=agent_b3, environment=environment, n_trials_per_session=200, n_sessions=1024),
-        1: bandits.create_dataset(agent=agent_b1, environment=environment, n_trials_per_session=200, n_sessions=1024)
+        5: bandits.create_dataset(agent=agent_b5, environment=environment, n_trials=200, n_sessions=1024),
+        3: bandits.create_dataset(agent=agent_b3, environment=environment, n_trials=200, n_sessions=1024),
+        1: bandits.create_dataset(agent=agent_b1, environment=environment, n_trials=200, n_sessions=1024)
     }
     
     # get a list of model 
@@ -64,7 +64,7 @@ if __name__=='__main__':
             n_sessions=n_sessions,
             ensemble=1,
             epochs=0,
-            alpha=0.25,
+            alpha_reward=0.25,
             beta_reward=beta,
             forget_rate=0.2,
             beta_choice=0.25,

@@ -5,47 +5,31 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from resources.rnn_utils import parameter_file_naming
-from resources.bandits import create_dataset, AgentQ, AgentQ_SampleBetaDist, EnvironmentBanditsDrift, EnvironmentBanditsSwitch, get_update_dynamics
+from resources.bandits import create_dataset, AgentQ, AgentQ_SampleBetaDist, BanditsDrift, BanditsSwitch, get_update_dynamics
 
 
 n_sessions_datasets = [16, 32, 64, 128, 256, 512]
-base_name = 'data/rldm2025/data_rldm.csv'
+sigma = 0.2
+base_name = 'data/study_recovery_stepperserverance/data_rldm.csv'
 
 for iteration in range(8):
     for n_sessions in n_sessions_datasets:
         dataset_name = base_name.replace('.', f'_{n_sessions}p_{iteration}.')
         
-        n_trials_per_session = 256
-
-        parameter_variance = {
-            'beta_reward': 0.5, 
-            'beta_choice': 0.5, 
-            'alpha_reward': 0.1, 
-            'alpha_penalty': 0.1, 
-            'alpha_choice': 0.1,
-            'forget_rate': 0.01,
-            'confirmation_bias': 0.1,
-            }
+        n_trials_per_session = 200
 
         agent = AgentQ_SampleBetaDist(
             beta_reward=3.,
-            alpha_reward=0.25,
-            alpha_penalty=0.5,
-            alpha_counterfactual=0.,
             beta_choice=3.,
-            alpha_choice=0.5,
-            confirmation_bias=0.5,
-            forget_rate=0.2,
-            parameter_variance=parameter_variance,
+            zero_threshold=0.2,
             )
 
-        # environment = EnvironmentBanditsSwitch(sigma=0.2, block_flip_prob=0.05)
-        environment = EnvironmentBanditsDrift(sigma=0.2)
+        environment = BanditsDrift(sigma=sigma)
 
         dataset, experiment_list, parameter_list = create_dataset(
                     agent=agent,
                     environment=environment,
-                    n_trials_per_session=n_trials_per_session,
+                    n_trials=n_trials_per_session,
                     n_sessions=n_sessions,
                     sample_parameters=True,
                     verbose=False,
@@ -104,9 +88,6 @@ for iteration in range(8):
         columns = ['session', 'choice', 'reward', 'choice_prob_0', 'choice_prob_1', 'action_value_0', 'action_value_1', 'reward_value_0', 'reward_value_1', 'choice_value_0', 'choice_value_1', 'beta_reward', 'alpha_reward', 'alpha_penalty', 'confirmation_bias', 'forget_rate', 'beta_choice', 'alpha_choice', 'mean_beta_reward', 'mean_alpha_reward', 'mean_alpha_penalty', 'mean_confirmation_bias', 'mean_forget_rate', 'mean_beta_choice', 'mean_alpha_choice']
         data = np.stack((np.array(session), np.array(choice), np.array(reward), np.array(choice_prob_0), np.array(choice_prob_1), np.array(action_value_0), np.array(action_value_1), np.array(reward_value_0), np.array(reward_value_1), np.array(choice_value_0), np.array(choice_value_1), np.array(beta_reward), np.array(alpha_reward), np.array(alpha_penalty), np.array(confirmation_bias), np.array(forget_rate), np.array(beta_choice), np.array(alpha_choice), np.array(mean_beta_reward), np.array(mean_alpha_reward), np.array(mean_alpha_penalty), np.array(mean_confirmation_bias), np.array(mean_forget_rate), np.array(mean_beta_choice), np.array(mean_alpha_choice)), axis=-1)#.swapaxes(1, 0)
         df = pd.DataFrame(data=data, columns=columns)
-
-        if isinstance(parameter_variance, float):
-            parameter_variance = np.round(agent._parameter_variance, 2)
         
         if dataset_name is None:
             dataset_name = parameter_file_naming(
@@ -119,7 +100,6 @@ for iteration in range(8):
                 alpha_choice=np.round(agent._mean_alpha_choice, 2), 
                 beta_choice=np.round(agent._mean_beta_choice, 2),
                 alpha_counterfactual=0.00,
-                variance=parameter_variance,
                 ).replace('.pkl','.csv')
         
         df.to_csv(dataset_name, index=False)

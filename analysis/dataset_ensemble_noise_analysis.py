@@ -25,9 +25,9 @@ if __name__ == '__main__':
 
         # training parameters
         epochs = 1024,
-        n_trials_per_session = 64,
+        n_trials = 64,
         n_sessions = n_sessions,
-        n_steps_per_call = 8,
+        n_steps = 8,
         bagging = True,
         learning_rate = 1e-2,
 
@@ -40,7 +40,7 @@ if __name__ == '__main__':
         dropout = 0.1,
         
         # ground truth parameters
-        alpha = 0.25,
+        alpha_reward = 0.25,
         beta_reward = beta,
         forget_rate = 0.2,
         beta_choice = 0.25,

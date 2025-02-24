@@ -155,7 +155,7 @@ class rl_sindy_theorist(BaseEstimator):
             epochs=self.epochs,
             batch_size=batch_size,
             bagging=self.bagging,
-            n_steps_per_call=self.n_steps_per_call,
+            n_steps=self.n_steps_per_call,
         )
 
         model_rnn.eval()
@@ -198,7 +198,7 @@ class rl_sindy_theorist(BaseEstimator):
             x_train, control, feature_names = create_dataset(
                 agent=agent_rnn, 
                 data=[experiment_list[id]] if len(session_id)>1 else experiment_list,
-                n_trials_per_session=None,
+                n_trials=None,
                 n_sessions=None,
                 shuffle=False,
                 trimming=True,
@@ -207,7 +207,7 @@ class rl_sindy_theorist(BaseEstimator):
             
             # fit SINDy models -> One model per x_train feature
             sindy_models = fit_sindy(
-                x_train=x_train, 
+                variables=x_train, 
                 control=control, 
                 feature_names=feature_names, 
                 polynomial_degree=self.polynomial_degree, 

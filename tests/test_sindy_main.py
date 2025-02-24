@@ -12,38 +12,37 @@ for i in range(1):
     # i = 1
     _, _ , features = sindy_main.main(
         
-        # data='data/rldm2025/data_rldm_512p_7.csv',
-        # model='params/rldm2025/params_rldm_512p_7.pkl',
+        # data='data/study_recovery_s03/data_rldm_256p_0.csv',
+        # model='params/study_recovery_s03/params_rldm_256p_0.pkl',
         
-        model = 'params/benchmarking/rnn_sugawara.pkl',
-        data = 'data/sugawara2021_143_processed.csv',
+        # model = 'params/benchmarking/rnn_sugawara.pkl',
+        # data = 'data/sugawara2021_143_processed.csv',
         
         # model = 'params/benchmarking/bahrami2020_965_0.pkl',
         # data = 'data/bahrami2020_965_processed.csv',
         
         # general recovery parameters
-        session_id=142,
-        n_sessions=512,
-        n_trials_per_session=256,
+        participant_id=0,
+        n_trials=1024,
         
         # sindy parameters
         polynomial_degree=2,
-        regularization=1e-1,
+        regularization=0.1,
         threshold=0.05,
         verbose=True,
         
         # generated training dataset parameters
-        # n_actions=2,
-        # sigma=0.2,
-        # beta_reward=3.,
-        # alpha=0.25,
-        # alpha_penalty=0.5,
-        # beta_choice=3.,
-        # alpha_choice=1.,
-        # forget_rate=0.2,
-        # confirmation_bias=0.5,
-        # counterfactual=True,
-        # alpha_counterfactual=0.5,
+        n_actions=2,
+        sigma=0.2,
+        beta_reward=3.,
+        alpha=0.25,
+        alpha_penalty=0.5,
+        forget_rate=0.,
+        confirmation_bias=0.,
+        beta_choice=1.,
+        alpha_choice=1.,
+        counterfactual=False,
+        alpha_counterfactual=0.,
         # parameter_variance=0.,
         
         analysis=True,

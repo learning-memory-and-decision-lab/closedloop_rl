@@ -55,7 +55,7 @@ n_parameters_rnn = sum(p.numel() for p in agent_rnn._model.parameters() if p.req
 agent_sindy = setup_agent_sindy(
     model=model_rnn, 
     data=data, 
-    session_id=session_id,
+    participant_id=session_id,
     )
 n_parameters_sindy = [agent_sindy[agent]._count_sindy_parameters(without_self=True) for agent in agent_sindy]
 

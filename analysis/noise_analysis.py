@@ -60,7 +60,7 @@ def main(
     coeffs = []
     for b in betas:
         # setup of datasets
-        environment = bandits.EnvironmentBanditsDrift(sigma=sigma, n_actions=n_actions)
+        environment = bandits.BanditsDrift(sigma=sigma, n_actions=n_actions)
         agent = bandits.AgentQ(alpha, b, n_actions, forget_rate, perseverance_bias, False, regret)  
         print('Setup of the environment and agent complete.')
 
@@ -68,7 +68,7 @@ def main(
         dataset_train, _ = bandits.create_dataset(
             agent=agent,
             environment=environment,
-            n_trials_per_session=n_trials_per_session,
+            n_trials=n_trials_per_session,
             n_sessions=n_sessions,
             device=device)    
 
@@ -76,7 +76,7 @@ def main(
         dataset_val, _ = bandits.create_dataset(
             agent=agent,
             environment=environment,
-            n_trials_per_session=50,
+            n_trials=50,
             n_sessions=16,
             device=device)
 
@@ -84,7 +84,7 @@ def main(
         dataset_test, experiment_list_test = bandits.create_dataset(
             agent=agent,
             environment=environment,
-            n_trials_per_session=200,
+            n_trials=200,
             n_sessions=128,
             device=device)
         
@@ -105,7 +105,7 @@ def main(
                     sigma=sigma,
                     n_actions=n_actions,
                     
-                    alpha=alpha,
+                    alpha_reward=alpha,
                     beta_reward=b,
                     forget_rate=forget_rate,
                     beta_choice=perseverance_bias,

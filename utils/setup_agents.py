@@ -57,9 +57,9 @@ def setup_agent_sindy(
     model,
     data,
     threshold = 0.03,
-    session_id: int = None,
+    participant_id: int = None,
     polynomial_degree: int = 2,
-) -> List[AgentSindy]:
+) -> AgentSindy:
     
     agent, _, _ = sindy_main(
         model = model,
@@ -68,7 +68,7 @@ def setup_agent_sindy(
         polynomial_degree=polynomial_degree,
         verbose = True,
         analysis=False,
-        session_id=session_id,
+        participant_id=participant_id,
     )
 
     return agent 

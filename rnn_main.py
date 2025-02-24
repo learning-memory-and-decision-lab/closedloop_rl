@@ -28,12 +28,12 @@ def main(
 
   # data and training parameters
   epochs = 128,
-  train_test_ratio = 0.7,
-  n_trials_per_session = 256,
+  train_test_ratio = 0.,
+  n_trials = 256,
   n_sessions = 256,
   bagging = False,
-  sequence_length = 32,
-  n_steps_per_call = 16,  # -1 for full sequence
+  sequence_length = 64,
+  n_steps = 16,  # -1 for full sequence
   batch_size = -1,  # -1 for one batch per epoch
   learning_rate = 1e-2,
   convergence_threshold = 1e-6,
@@ -41,7 +41,7 @@ def main(
   
   # ground truth parameters
   beta_reward = 3.,
-  alpha = 0.25,
+  alpha_reward = 0.25,
   alpha_penalty = -1.,
   alpha_counterfactual = 0.,
   beta_choice = 0.,
@@ -59,12 +59,15 @@ def main(
   session_id: int = 0
   ):
   
+  # print cuda devices available
+  print(f'Cuda available: {torch.cuda.is_available()}')
+  
   if not os.path.exists('params'):
     os.makedirs('params')
   
   # tracked variables in the RNN
-  x_train_list = ['x_V_LR', 'x_V_LR_cf', 'x_V_nc', 'x_C', 'x_C_nc']
-  control_list = ['c_a', 'c_r', 'c_r_cf', 'c_a_repeat', 'c_V']
+  x_train_list = ['x_V_LR', 'x_V', 'x_V_nc', 'x_C', 'x_C_nc']
+  control_list = ['c_a', 'c_r', 'c_V']
   sindy_feature_list = x_train_list + control_list
 
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -75,18 +78,18 @@ def main(
     print('No path to dataset provided.')
     
     # setup
-    environment = bandits.EnvironmentBanditsDrift(sigma, n_actions, counterfactual=counterfactual)
+    environment = bandits.BanditsDrift(sigma, n_actions, counterfactual=counterfactual)
     # environment = bandits.EnvironmentBanditsSwitch(sigma, counterfactual=counterfactual)
     agent = bandits.AgentQ(
       n_actions=n_actions, 
-      alpha_reward=alpha, 
       beta_reward=beta_reward, 
+      alpha_reward=alpha_reward, 
+      alpha_penalty=alpha_penalty, 
       forget_rate=forget_rate, 
+      confirmation_bias=confirmation_bias, 
       beta_choice=beta_choice, 
       alpha_choice=alpha_choice,
-      alpha_penalty=alpha_penalty, 
       alpha_counterfactual=alpha_counterfactual, 
-      confirmation_bias=confirmation_bias, 
       parameter_variance=parameter_variance,
       )
     if reward_prediction_error is not None:
@@ -97,7 +100,7 @@ def main(
     dataset, _, _ = bandits.create_dataset(
         agent=agent,
         environment=environment,
-        n_trials_per_session=n_trials_per_session,
+        n_trials=n_trials,
         n_sessions=n_sessions,
         sample_parameters=parameter_variance!=0,
         sequence_length=sequence_length,
@@ -107,7 +110,7 @@ def main(
       dataset_test, experiment_list, _ = bandits.create_dataset(
         agent=agent,
         environment=environment,
-        n_trials_per_session=256,
+        n_trials=256,
         n_sessions=n_sessions,
         sample_parameters=parameter_variance!=0,
         device=device)
@@ -148,10 +151,10 @@ def main(
     
   experiment_test = experiment_list[session_id][-dataset_test.xs.shape[1]:]
 
-  if model is None:
+  if data is None and model is None:
     params_path = rnn_utils.parameter_file_naming(
       'params/params', 
-      alpha_reward=alpha, 
+      alpha_reward=alpha_reward, 
       beta_reward=beta_reward, 
       alpha_counterfactual=alpha_counterfactual,
       forget_rate=forget_rate, 
@@ -162,19 +165,19 @@ def main(
       variance=parameter_variance, 
       verbose=True,
       )
+  elif data is not None and model is None:
+    params_path = 'params/params_' + data.split('/')[-1].replace('.csv', '.pkl')
   else:
-    params_path = model
+    params_path = '' + model
 
   # define model
   model = rnn.RLRNN(
       n_actions=n_actions, 
       hidden_size=hidden_size, 
-      init_value=0.5,
       device=device,
       list_sindy_signals=sindy_feature_list,
       dropout=dropout,
       n_participants=n_participants if participant_emb else 0,
-      counterfactual=dataset_train.xs[:, :, n_actions+1].mean() != -1,
       ).to(device)
 
   optimizer_rnn = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -199,7 +202,7 @@ def main(
         epochs=epochs,
         batch_size=batch_size,
         bagging=bagging,
-        n_steps_per_call=n_steps_per_call,
+        n_steps=n_steps,
     )
     
     # save trained parameters
@@ -243,7 +246,11 @@ def main(
 
     fig, axs = plotting.session(agents, experiment_test)
     
-    fig.suptitle('$beta_r=$'+str(np.round(agent_rnn._beta_reward, 2)) + '; $beta_c=$'+str(np.round(agent_rnn._beta_choice, 2)))
+    title_ground_truth = ''
+    if agent is not None: 
+      title_ground_truth += r'GT: $\beta_{reward}=$'+str(np.round(agent._beta_reward, 2)) + r'; $\beta_{choice}=$'+str(np.round(agent._beta_choice, 2))
+    title_rnn = r'RNN: $\beta_{reward}=$'+str(np.round(agent_rnn._beta_reward, 2)) + r'; $\beta_{choice}=$'+str(np.round(agent_rnn._beta_choice, 2))
+    fig.suptitle(title_ground_truth + '\n' + title_rnn)
     plt.show()
     
   return model, loss_test
@@ -258,19 +265,21 @@ if __name__=='__main__':
   parser.add_argument('--model', type=str, default=None, help='Model name to load from and/or save to parameters of RNN')
   parser.add_argument('--data', type=str, default=None, help='Path to dataset')
   parser.add_argument('--n_actions', type=int, default=2, help='Number of possible actions')
-  parser.add_argument('--epochs_train', type=int, default=128, help='Number of epochs for training')
-  parser.add_argument('--n_trials_per_session', type=int, default=64, help='Number of trials per session')
-  parser.add_argument('--n_sessions', type=int, default=4096, help='Number of sessions')
-  parser.add_argument('--n_steps_per_call', type=int, default=8, help='Number of steps per call')
+  parser.add_argument('--epochs', type=int, default=1024, help='Number of epochs for training')
+  parser.add_argument('--n_steps', type=int, default=16, help='Number of steps per call')
   parser.add_argument('--bagging', action='store_true', help='Whether to use bagging')
-  parser.add_argument('--batch_size_train', type=int, default=-1, help='Batch size')
-  parser.add_argument('--lr_train', type=float, default=0.01, help='Learning rate of the RNN')
+  parser.add_argument('--batch_size', type=int, default=-1, help='Batch size')
+  parser.add_argument('--lr', type=float, default=0.01, help='Learning rate of the RNN')
+  parser.add_argument('--sequence_length', type=int, default=-1, help='Length of training sequences')
 
   # RNN parameters
   parser.add_argument('--hidden_size', type=int, default=8, help='Hidden size of the RNN')
-  parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate')
+  parser.add_argument('--dropout', type=float, default=0.5, help='Dropout rate')
+  parser.add_argument('--embedding', action='store_true', help='Whether to use participant embedding')
 
   # Ground truth parameters
+  parser.add_argument('--n_trials', type=int, default=200, help='Number of trials per session')
+  parser.add_argument('--n_sessions', type=int, default=512, help='Number of sessions')
   parser.add_argument('--alpha', type=float, default=0.25, help='Alpha parameter for the Q-learning update rule')
   parser.add_argument('--beta', type=float, default=3, help='Beta parameter for the Q-learning update rule')
   parser.add_argument('--forget_rate', type=float, default=0., help='Forget rate')
@@ -279,7 +288,7 @@ if __name__=='__main__':
   parser.add_argument('--confirmation_bias', type=float, default=0., help='Whether to include confirmation bias')
 
   # Environment parameters
-  parser.add_argument('--sigma', type=float, default=0.1, help='Drift rate of the reward probabilities')
+  parser.add_argument('--sigma', type=float, default=0.2, help='Drift rate of the reward probabilities')
   parser.add_argument('--non_binary_reward', action='store_true', help='Whether to use non-binary rewards')
 
   # Analysis parameters
@@ -290,26 +299,26 @@ if __name__=='__main__':
   main(
     # train = True, 
     checkpoint = args.checkpoint,
-    # model = 'params/params_rnn_a025_b3_cb.pkl',
     model = args.model,
     data = args.data,
     n_actions=args.n_actions,
 
     # training parameters
-    epochs=args.epochs_train,
-    n_trials_per_session = args.n_trials_per_session,
+    epochs=args.epochs,
+    n_trials = args.n_trials,
     n_sessions = args.n_sessions,
-    n_steps_per_call = args.n_steps_per_call,
+    n_steps = args.n_steps,
     bagging = args.bagging,
-    batch_size=args.batch_size_train,
-    learning_rate=args.lr_train,
+    batch_size=args.batch_size,
+    learning_rate=args.lr,
 
     # rnn parameters
     hidden_size = args.hidden_size,
     dropout = args.dropout,
+    participant_emb=args.embedding,
     
     # ground truth parameters
-    alpha = args.alpha,
+    alpha_reward = args.alpha,
     beta_reward = args.beta,
     forget_rate = args.forget_rate,
     beta_choice = args.perseverance_bias,

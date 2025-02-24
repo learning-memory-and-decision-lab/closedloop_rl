@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 
 import pysindy as ps
 
-from resources.bandits import Environment, AgentNetwork, AgentSindy, get_update_dynamics, BanditSession
+from resources.bandits import Bandits, AgentNetwork, AgentSindy, get_update_dynamics, BanditSession
 from resources.rnn_utils import DatasetRNN
 
 
@@ -69,71 +69,79 @@ def make_sindy_data(
 
 def create_dataset(
   agent: AgentNetwork,
-  data: Union[Environment, DatasetRNN, List[BanditSession], np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]],
-  n_trials_per_session: int,
+  data: Union[Bandits, DatasetRNN, List[BanditSession], np.ndarray, torch.Tensor, List[np.ndarray], List[torch.Tensor]],
+  n_trials: int,
   n_sessions: int,
+  participant_id: int = None,
   shuffle: bool = False,
   verbose: bool = False,
-  trimming: bool = False,
-  clear_offset: bool = False,
+  dataprocessing: Dict[str, List] = None,
   ):
   
-  highpass_threshold = 1e-2
+  highpass_threshold_dt = 0.05
   
-  if not isinstance(data, Environment):
+  if not isinstance(data, Bandits):
     if isinstance(data, (np.ndarray, torch.Tensor)) and data.ndim == 2:
       data = [data]
     if verbose:
       Warning('data is not of type Environment. Checking for correct number of sessions and trials per session with respect to the given data object.')
     if isinstance(data, DatasetRNN):
-      if n_trials_per_session > data.xs.shape[1] or n_trials_per_session == -1 or n_trials_per_session == None:
-        n_trials_per_session = data.xs.shape[1]
-      if n_sessions > data.xs.shape[0] or n_sessions == -1 or n_sessions == None:
-        n_trials_per_session = data.xs.shape[0]
+      if n_trials == -1 or n_trials == None or n_trials > data.xs.shape[1]:
+        n_trials = data.xs.shape[1]
+      if n_sessions == -1 or n_sessions == None or n_sessions > data.xs.shape[0]:
+        n_sessions = data.xs.shape[0]
     else:
         if isinstance(data[0], BanditSession):
-          if n_trials_per_session == None or n_trials_per_session == -1 or n_trials_per_session > data[0].choices.shape[0]:
-            n_trials_per_session = data[0].choices.shape[0]  
+          if n_trials == None or n_trials == -1 or n_trials > data[0].choices.shape[0]:
+            n_trials = data[0].choices.shape[0]  
           if n_sessions == None or n_sessions == -1 or n_sessions > len(data):
             n_sessions = len(data)
         else:
-          if n_trials_per_session > data[0].shape[0]: 
-            n_trials_per_session = data[0].shape[0]
+          if n_trials > data[0].shape[0]: 
+            n_trials = data[0].shape[0]
           
-  keys_x = [key for key in agent._model.history.keys() if key.startswith('x_')]
-  keys_c = [key for key in agent._model.history.keys() if key.startswith('c_')]
-    
+  keys_x = [key for key in agent._model.recording.keys() if key.startswith('x_')]
+  keys_c = [key for key in agent._model.recording.keys() if key.startswith('c_')]
+  
   x_train = {key: [] for key in keys_x}
   control = {key: [] for key in keys_c}
   
+  
+  # determine whether trimming is specified in any of the variables of the dataprocessing-setup
+  if dataprocessing is None or any([1-int(dataprocessing[key][0]) for key in dataprocessing]):
+    trimming = 0
+  else:
+    trimming = int(0.25*n_trials)
+
   for session in range(n_sessions):
     # perform agent updates to record values over trials
-    if isinstance(data, Environment):
-      agent.new_sess()
-      for _ in range(n_trials_per_session):
+    if isinstance(data, Bandits):
+      agent.new_sess(participant_id=participant_id)
+      for _ in range(n_trials):
         # generate trial data
         choice = agent.get_choice()
         reward = data.step(choice)
-        agent.update(choice, reward)
+        agent.update(choice, reward, participant_id=participant_id)
+    elif isinstance(data, DatasetRNN):
+      # fill up recording of rnn-agent
+      _, _, agent = get_update_dynamics(data.xs[session].cpu().numpy(), agent)
     elif isinstance(data[0], BanditSession):
-      # fill up history of rnn-agent
+      # fill up recording of rnn-agent
       _, _, agent = get_update_dynamics(data[session], agent)
     
-    trimming = int(0.25*n_trials_per_session) if trimming else 0
-    
     # sort the data of one session into the corresponding signals
-    for key in agent._model.history.keys():
-      if len(agent._model.history[key]) > 1:
+    for key in keys_x+keys_c:
+      if len(agent._model.get_recording(key)) > 0:
         # get all recorded values for the current session of one specific key 
-        history = agent._model.history[key]
+        recording = agent._model.get_recording(key)
         # create tensor from list of tensors 
-        values = torch.concat(history).detach().cpu().numpy()[trimming:]
-        if clear_offset and key in keys_x:
-          values -= np.min(values)
-        # remove insignificant updates with high-pass: check if dv/dt > threshold; otherwise set v(t=1) = v(t=0)
-        dvdt = np.abs(np.diff(values, axis=1).reshape(values.shape[0], values.shape[2]))
+        values = np.concatenate(recording)[trimming:]
+        # remove insignificant updates with a high-pass filter: check if dv/dt > threshold; otherwise set v(t=1) = v(t=0)
+        dvdt = np.abs(np.diff(values, axis=1))
         for i_action in range(values.shape[-1]):
-          values[:, 1, i_action] = np.where(dvdt[:, i_action] > highpass_threshold, values[:, 1, i_action], values[:, 0, i_action])
+          values[:, 1, i_action] = np.where(dvdt[:, 0, i_action] > highpass_threshold_dt, values[:, 1, i_action], values[:, 0, i_action])
+        # TODO: in the case of binary reward: add a little bit of noise on top to prevent r^2 terms in sindy models
+        # if key == 'c_r':
         # in the case of 1D values along actions dim: Create 2D values by repeating along the actions dim (e.g. reward in non-counterfactual experiments) 
         if values.shape[-1] == 1:
             values = np.repeat(values, agent._n_actions, -1)
@@ -149,17 +157,49 @@ def create_dataset(
   # make arrays from dictionaries
   x_train_array = np.zeros((len(x_train[keys_x[0]]), 2, len(keys_x)))
   control_array = np.zeros((len(x_train[keys_x[0]]), 2, len(keys_c)))
-  for i, key in enumerate(x_train):
+  for i, key in enumerate(keys_x):
     x_train_array[:, :, i] = np.stack(x_train[key])
-  for i, key in enumerate(control):
+  for i, key in enumerate(keys_c):
     control_array[:, :, i] = np.stack(control[key])
+  
+  # data processing
+  x_mins, x_maxs, c_mins, c_maxs = [], [], [], []
+  
+  for index_key, key in enumerate(keys_x):
+    # Check for offset-clearing
+    if key in dataprocessing.keys() and int(dataprocessing[key][1]):
+      x_mins = np.min(x_train_array[..., index_key])
+      x_train_array[..., index_key] -= x_mins
+    # Check for normalization
+    if key in dataprocessing.keys() and int(dataprocessing[key][2]):
+      raise UserWarning('Normalization is not yet supported as a data processing step.')
+      # x_maxs = np.max(np.abs(x_train_array), axis=0, keepdims=True)[:, :1] + 1e-6
+      # x_train_array /= x_maxs
+  for index_key, key in enumerate(keys_c):
+    # Check for offset-clearing
+    if key in dataprocessing.keys() and int(dataprocessing[key][1]):
+      c_mins = np.min(control_array[..., index_key], axis=0)[0]
+      c_mins = c_mins if c_mins != -1 else 0
+      control_array[..., index_key] -= c_mins
+    # Check for normalization
+    if key in dataprocessing.keys() and int(dataprocessing[key][2]):
+      raise UserWarning('Normalization is not yet supported as a data processing step.')
+      # c_maxs = np.max(control_array, axis=0, keepdims=True)[:, 0]
+      # c_maxs[c_maxs == -1] = 1
+      # mask_c_maxs_not_zero = (c_maxs != 0).reshape(-1)
+      # control_array[:, 0, mask_c_maxs_not_zero] /= c_maxs[..., mask_c_maxs_not_zero]
+  
+    # compute scaling factor for beta
+  #   beta_scaling = np.abs(x_maxs - x_mins).reshape(-1)
+  # else:
+  beta_scaling = np.ones((x_train_array.shape[-1]))
   
   if shuffle:
     shuffle_idx = np.random.permutation(len(x_train_array))
     x_train_array = x_train_array[shuffle_idx]
     control_array = control_array[shuffle_idx]
   
-  return x_train_array, control_array, feature_names
+  return x_train_array, control_array, feature_names, beta_scaling
 
 
 def check_library_setup(library_setup: Dict[str, List[str]], feature_names: List[str], verbose=False) -> bool:

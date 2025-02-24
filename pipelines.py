@@ -208,7 +208,7 @@ def pipeline_sindy(
         x_train, control, feature_names = create_dataset(
             agent=agent_rnn, 
             data=[experiment_list_train[id]] if len(session_id)>1 else experiment_list_train,
-            n_trials_per_session=None, 
+            n_trials=None, 
             n_sessions=None, 
             shuffle=False,
             trimming=True,
@@ -217,7 +217,7 @@ def pipeline_sindy(
         
         # fit SINDy models -> One model per x_train feature
         sindy_models = fit_model(
-            x_train=x_train, 
+            variables=x_train, 
             control=control, 
             feature_names=feature_names, 
             polynomial_degree=polynomial_degree, 
